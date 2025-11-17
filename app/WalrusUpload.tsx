@@ -1,4 +1,4 @@
- "use client";
+"use client";
 import { useState } from "react";
 import {
   Card,
@@ -17,6 +17,7 @@ import {
 } from "@mysten/dapp-kit";
 import { createWalrusService } from "./services";
 import ClipLoader from "react-spinners/ClipLoader";
+import { WriteFilesFlow } from "@mysten/walrus";
 
 type UploadTab = "file" | "text" | "json";
 
@@ -84,7 +85,7 @@ export function WalrusUpload() {
       const contents = await file.arrayBuffer();
 
       // Use writeFilesFlow for browser environments (avoids popup blocking)
-      const flow = walrus.uploadWithFlow(
+      const flow: WriteFilesFlow = walrus.uploadWithFlow(
         [
           {
             contents: new Uint8Array(contents),
@@ -105,8 +106,9 @@ export function WalrusUpload() {
         deletable: true,
       });
 
-      // Step 3: Sign and execute register transaction
+      // Step 3: Sign and execute register transaction and get the created blob object ID
       let registerDigest: string;
+      let blobObjectId: string | null = null;
       await new Promise<void>((resolve, reject) => {
         signAndExecute(
           { transaction: registerTx },
@@ -114,7 +116,30 @@ export function WalrusUpload() {
             onSuccess: async ({ digest }) => {
               try {
                 registerDigest = digest;
-                await suiClient.waitForTransaction({ digest });
+                const result = await suiClient.waitForTransaction({
+                  digest,
+                  options: {
+                    showEffects: true,
+                    showEvents: true,
+                  },
+                });
+
+                // Get the blob object ID from BlobRegistered event
+                if (result.events) {
+                  const blobRegisteredEvent = result.events.find((event) =>
+                    event.type.includes("BlobRegistered"),
+                  );
+
+                  if (blobRegisteredEvent?.parsedJson) {
+                    // Extract object_id from the event (can be snake_case or camelCase)
+                    const eventData = blobRegisteredEvent.parsedJson as {
+                      object_id?: string;
+                      objectId?: string;
+                    };
+                    blobObjectId =
+                      eventData.object_id || eventData.objectId || null;
+                  }
+                }
                 resolve();
               } catch (err) {
                 reject(err);
@@ -149,14 +174,16 @@ export function WalrusUpload() {
         );
       });
 
-      // Step 7: Get the blobId and metadata id from listFiles
+      // Step 7: Get the blobId from listFiles
       const files = await flow.listFiles();
       const blobId = files[0]?.blobId;
-      const metadataId = files[0]?.id;
 
-      if (!blobId || !metadataId) {
-        throw new Error("Failed to get blobId or metadata id after upload");
+      if (!blobId) {
+        throw new Error("Failed to get blobId after upload");
       }
+
+      // Use the blob object ID from transaction effects, or fallback to blobId if not found
+      const metadataId = blobObjectId || blobId;
 
       const uploadedItem: UploadedItem = {
         blobId,
@@ -229,6 +256,7 @@ export function WalrusUpload() {
       });
 
       let registerDigest: string;
+      let blobObjectId: string | null = null;
       await new Promise<void>((resolve, reject) => {
         signAndExecute(
           { transaction: registerTx },
@@ -236,7 +264,30 @@ export function WalrusUpload() {
             onSuccess: async ({ digest }) => {
               try {
                 registerDigest = digest;
-                await suiClient.waitForTransaction({ digest });
+                const result = await suiClient.waitForTransaction({
+                  digest,
+                  options: {
+                    showEffects: true,
+                    showEvents: true,
+                  },
+                });
+
+                // Get the blob object ID from BlobRegistered event
+                if (result.events) {
+                  const blobRegisteredEvent = result.events.find((event) =>
+                    event.type.includes("BlobRegistered"),
+                  );
+
+                  if (blobRegisteredEvent?.parsedJson) {
+                    // Extract object_id from the event (can be snake_case or camelCase)
+                    const eventData = blobRegisteredEvent.parsedJson as {
+                      object_id?: string;
+                      objectId?: string;
+                    };
+                    blobObjectId =
+                      eventData.object_id || eventData.objectId || null;
+                  }
+                }
                 resolve();
               } catch (err) {
                 reject(err);
@@ -269,14 +320,16 @@ export function WalrusUpload() {
         );
       });
 
-      // Step 5: Get blobId and metadata id
+      // Step 5: Get blobId
       const files = await flow.listFiles();
       const blobId = files[0]?.blobId;
-      const metadataId = files[0]?.id;
 
-      if (!blobId || !metadataId) {
-        throw new Error("Failed to get blobId or metadata id after upload");
+      if (!blobId) {
+        throw new Error("Failed to get blobId after upload");
       }
+
+      // Use the blob object ID from transaction effects, or fallback to blobId if not found
+      const metadataId = blobObjectId || blobId;
 
       const uploadedItem: UploadedItem = {
         blobId,
@@ -354,6 +407,7 @@ export function WalrusUpload() {
       });
 
       let registerDigest: string;
+      let blobObjectId: string | null = null;
       await new Promise<void>((resolve, reject) => {
         signAndExecute(
           { transaction: registerTx },
@@ -361,7 +415,30 @@ export function WalrusUpload() {
             onSuccess: async ({ digest }) => {
               try {
                 registerDigest = digest;
-                await suiClient.waitForTransaction({ digest });
+                const result = await suiClient.waitForTransaction({
+                  digest,
+                  options: {
+                    showEffects: true,
+                    showEvents: true,
+                  },
+                });
+
+                // Get the blob object ID from BlobRegistered event
+                if (result.events) {
+                  const blobRegisteredEvent = result.events.find((event) =>
+                    event.type.includes("BlobRegistered"),
+                  );
+
+                  if (blobRegisteredEvent?.parsedJson) {
+                    // Extract object_id from the event (can be snake_case or camelCase)
+                    const eventData = blobRegisteredEvent.parsedJson as {
+                      object_id?: string;
+                      objectId?: string;
+                    };
+                    blobObjectId =
+                      eventData.object_id || eventData.objectId || null;
+                  }
+                }
                 resolve();
               } catch (err) {
                 reject(err);
@@ -394,14 +471,16 @@ export function WalrusUpload() {
         );
       });
 
-      // Step 5: Get blobId and metadata id
+      // Step 5: Get blobId
       const files = await flow.listFiles();
       const blobId = files[0]?.blobId;
-      const metadataId = files[0]?.id;
 
-      if (!blobId || !metadataId) {
-        throw new Error("Failed to get blobId or metadata id after upload");
+      if (!blobId) {
+        throw new Error("Failed to get blobId after upload");
       }
+
+      // Use the blob object ID from transaction effects, or fallback to blobId if not found
+      const metadataId = blobObjectId || blobId;
 
       const uploadedItem: UploadedItem = {
         blobId,
@@ -644,7 +723,25 @@ export function WalrusUpload() {
                           <span className="font-medium">Time:</span>{" "}
                           {new Date(item.timestamp).toLocaleTimeString()}
                         </div>
-                        <div className="flex flex-col gap-1 text-xs">
+                        <div className="flex flex-col gap-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-black">
+                              Sui Metadata ID:
+                            </span>
+                            <code className="bg-gray-100 px-2 py-1 rounded flex-1 truncate text-black">
+                              {item.id}
+                            </code>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                copyToClipboard(item.id, "Sui Metadata ID")
+                              }
+                              className="text-xs text-black"
+                            >
+                              Copy
+                            </Button>
+                          </div>
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-black">
                               Blob ID:
@@ -669,10 +766,15 @@ export function WalrusUpload() {
                     <div className="mt-3 flex gap-2 flex-wrap">
                       <Button
                         size="sm"
-                        onClick={() => window.open(item.url, "_blank")}
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() =>
+                          window.open(
+                            `https://testnet.suivision.xyz/object/${item.id}`,
+                            "_blank",
+                          )
+                        }
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
                       >
-                        🔗 Open in Walrus
+                        🔍 View on SuiVision
                       </Button>
                       <Button
                         size="sm"
@@ -685,18 +787,6 @@ export function WalrusUpload() {
                         className="bg-blue-600 hover:bg-blue-700 text-white"
                       >
                         🔍 View on WalrusCan
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          window.open(
-                            `https://suivision.xyz/object/${item.id}?network=testnet`,
-                            "_blank",
-                          )
-                        }
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
-                      >
-                        🔍 View on SuiVision
                       </Button>
                       <Button
                         size="sm"
