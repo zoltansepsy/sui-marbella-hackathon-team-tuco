@@ -6,13 +6,14 @@ import { Counter } from "./Counter";
 import { CreateCounter } from "./CreateCounter";
 import { CounterList } from "./components/CounterList";
 import { WalrusUpload } from "./WalrusUpload";
+import { SealWhitelist } from "./SealWhitelist";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 function App() {
   const currentAccount = useCurrentAccount();
   const [counterId, setCounter] = useState<string | null>(null);
-  const [view, setView] = useState<'create' | 'search' | 'counter' | 'walrus'>('create');
+  const [view, setView] = useState<'create' | 'search' | 'counter' | 'walrus' | 'seal'>('create');
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
@@ -98,6 +99,16 @@ function App() {
                   >
                     📦 Walrus Storage
                   </Button>
+                  <Button
+                    variant={view === 'seal' ? 'default' : 'outline'}
+                    onClick={() => setView('seal')}
+                    className={view === 'seal' 
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }
+                  >
+                    🔐 Seal Whitelist
+                  </Button>
                 </div>
 
                 {/* Content based on view */}
@@ -111,6 +122,10 @@ function App() {
 
                 {view === 'walrus' && (
                   <WalrusUpload />
+                )}
+
+                {view === 'seal' && (
+                  <SealWhitelist />
                 )}
               </div>
             )
