@@ -5,7 +5,13 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useState, useMemo } from "react";
 import ClipLoader from "react-spinners/ClipLoader";
@@ -30,16 +36,17 @@ export function Counter({ id }: { id: string }) {
   const counterPackageId = useNetworkVariable("counterPackageId");
   const counterService = useMemo(
     () => createCounterService(suiClient, counterPackageId),
-    [suiClient, counterPackageId]
+    [suiClient, counterPackageId],
   );
 
   const executeMoveCall = (method: "increment" | "reset") => {
     setWaitingForTxn(method);
 
     // Use service to create transaction
-    const tx = method === "reset" 
-      ? counterService.resetCounterTransaction(id)
-      : counterService.incrementCounterTransaction(id);
+    const tx =
+      method === "reset"
+        ? counterService.resetCounterTransaction(id)
+        : counterService.incrementCounterTransaction(id);
 
     signAndExecute(
       {
@@ -55,23 +62,30 @@ export function Counter({ id }: { id: string }) {
     );
   };
 
-  if (isPending) return (
-    <Alert>
-      <AlertDescription className="text-muted-foreground">Loading...</AlertDescription>
-    </Alert>
-  );
+  if (isPending)
+    return (
+      <Alert>
+        <AlertDescription className="text-muted-foreground">
+          Loading...
+        </AlertDescription>
+      </Alert>
+    );
 
-  if (error) return (
-    <Alert variant="destructive">
-      <AlertDescription>Error: {error.message}</AlertDescription>
-    </Alert>
-  );
+  if (error)
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>Error: {error.message}</AlertDescription>
+      </Alert>
+    );
 
-  if (!data.data) return (
-    <Alert>
-      <AlertDescription className="text-muted-foreground">Not found</AlertDescription>
-    </Alert>
-  );
+  if (!data.data)
+    return (
+      <Alert>
+        <AlertDescription className="text-muted-foreground">
+          Not found
+        </AlertDescription>
+      </Alert>
+    );
 
   const ownedByCurrentAccount =
     getCounterFields(data.data)?.owner === currentAccount?.address;
@@ -79,10 +93,22 @@ export function Counter({ id }: { id: string }) {
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader>
-        <CardTitle className="text-gray-900">Counter {id}</CardTitle>
-        <CardDescription className="text-gray-600">
-          Count: {getCounterFields(data.data)?.value}
-        </CardDescription>
+        <div className="flex justify-between items-start">
+          <div>
+            <CardTitle className="text-gray-900">Counter {id}</CardTitle>
+            <CardDescription className="text-gray-600">
+              Count: {getCounterFields(data.data)?.value}
+            </CardDescription>
+          </div>
+          <a
+            href="https://www.typescriptlang.org/docs/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 hover:text-blue-800 underline"
+          >
+            📘 TypeScript Docs
+          </a>
+        </div>
       </CardHeader>
       <CardContent className="flex flex-row gap-2">
         <Button
@@ -102,7 +128,11 @@ export function Counter({ id }: { id: string }) {
             disabled={waitingForTxn !== ""}
             className="bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg text-white"
           >
-            {waitingForTxn === "reset" ? <ClipLoader size={20} color="white" /> : "Reset"}
+            {waitingForTxn === "reset" ? (
+              <ClipLoader size={20} color="white" />
+            ) : (
+              "Reset"
+            )}
           </Button>
         ) : null}
       </CardContent>

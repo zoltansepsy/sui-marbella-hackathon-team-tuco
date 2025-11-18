@@ -830,6 +830,26 @@ export function WalrusUpload() {
               <strong>Network:</strong> Testnet •{" "}
               <strong>Storage Duration:</strong> 10 epochs
             </p>
+            <p className="mt-4">
+              <strong>Documentation:</strong>{" "}
+              <a
+                href="https://docs.walrus.space"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Walrus Documentation
+              </a>{" "}
+              •{" "}
+              <a
+                href="https://www.typescriptlang.org/docs/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                TypeScript Documentation
+              </a>
+            </p>
           </CardContent>
         </Card>
       </div>

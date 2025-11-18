@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -9,8 +9,17 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useCurrentAccount, useSuiClient, useWallets } from "@mysten/dapp-kit";
-import { createSealService } from "./services";
+import {
+  useCurrentAccount,
+  useSuiClient,
+  useWallets,
+  useSignAndExecuteTransaction,
+} from "@mysten/dapp-kit";
+import {
+  createSealService,
+  createWhitelistService,
+  type CapData,
+} from "./services";
 import ClipLoader from "react-spinners/ClipLoader";
 import { SessionKey } from "@mysten/seal";
 import { TESTNET_WHITELIST_PACKAGE_ID } from "./constants";
@@ -28,6 +37,7 @@ export function SealWhitelist() {
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
   const wallets = useWallets();
+  const { mutate: signAndExecute } = useSignAndExecuteTransaction();
 
   // Create seal service
   const sealService = useMemo(() => {
@@ -40,14 +50,38 @@ export function SealWhitelist() {
     });
   }, []);
 
+  // Create whitelist service
+  const whitelistService = useMemo(() => {
+    if (typeof window === "undefined") {
+      return null as any;
+    }
+    return createWhitelistService(suiClient, TESTNET_WHITELIST_PACKAGE_ID);
+  }, [suiClient]);
+
   const [whitelistObjectId, setWhitelistObjectId] = useState("");
   const [nonce, setNonce] = useState("");
   const [textToEncrypt, setTextToEncrypt] = useState("");
   const [sessionKey, setSessionKey] = useState<SessionKey | null>(null);
+  const [sessionKeyCreatedAt, setSessionKeyCreatedAt] = useState<number | null>(
+    null,
+  );
   const [encryptedItems, setEncryptedItems] = useState<EncryptedItem[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Separate loading states for each action
+  const [loadingSessionKey, setLoadingSessionKey] = useState(false);
+  const [loadingEncrypt, setLoadingEncrypt] = useState(false);
+  const [loadingDecrypt, setLoadingDecrypt] = useState<string | null>(null); // Track which item is being decrypted
+  const [loadingCreateWhitelist, setLoadingCreateWhitelist] = useState(false);
+  const [loadingAddAddress, setLoadingAddAddress] = useState(false);
+  const [loadingRemoveAddress, setLoadingRemoveAddress] = useState(false);
+
+  // Whitelist management state
+  const [ownedCaps, setOwnedCaps] = useState<CapData[]>([]);
+  const [selectedCap, setSelectedCap] = useState<string>("");
+  const [addressToAdd, setAddressToAdd] = useState("");
+  const [addressToRemove, setAddressToRemove] = useState("");
 
   /**
    * Sign personal message using wallet
@@ -88,6 +122,18 @@ export function SealWhitelist() {
   };
 
   /**
+   * Check if session key is expired (10 minutes TTL)
+   */
+  const isSessionKeyExpired = (): boolean => {
+    if (!sessionKey || !sessionKeyCreatedAt) {
+      return true;
+    }
+    const now = Date.now();
+    const tenMinutes = 10 * 60 * 1000; // 10 minutes in milliseconds
+    return now - sessionKeyCreatedAt > tenMinutes;
+  };
+
+  /**
    * Create session key with wallet signing
    */
   const handleCreateSessionKey = async () => {
@@ -101,7 +147,7 @@ export function SealWhitelist() {
       return;
     }
 
-    setLoading(true);
+    setLoadingSessionKey(true);
     setError(null);
     setSuccess(null);
 
@@ -111,6 +157,7 @@ export function SealWhitelist() {
         signPersonalMessage,
       );
       setSessionKey(key);
+      setSessionKeyCreatedAt(Date.now());
       setSuccess("Session key created successfully! Valid for 10 minutes.");
     } catch (err) {
       setError(
@@ -120,7 +167,7 @@ export function SealWhitelist() {
       );
       console.error("Session key creation error:", err);
     } finally {
-      setLoading(false);
+      setLoadingSessionKey(false);
     }
   };
 
@@ -143,7 +190,7 @@ export function SealWhitelist() {
       return;
     }
 
-    setLoading(true);
+    setLoadingEncrypt(true);
     setError(null);
     setSuccess(null);
 
@@ -182,7 +229,251 @@ export function SealWhitelist() {
       );
       console.error("Encryption error:", err);
     } finally {
-      setLoading(false);
+      setLoadingEncrypt(false);
+    }
+  };
+
+  /**
+   * Load owned caps
+   */
+  const loadOwnedCaps = async () => {
+    if (!currentAccount || !whitelistService) {
+      return;
+    }
+
+    try {
+      const caps = await whitelistService.getCapsByOwner(
+        currentAccount.address,
+      );
+      setOwnedCaps(caps);
+      if (caps.length > 0 && !selectedCap) {
+        setSelectedCap(caps[0].objectId);
+        if (!whitelistObjectId) {
+          setWhitelistObjectId(caps[0].whitelistId);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading caps:", err);
+    }
+  };
+
+  // Load owned caps on mount and when account changes
+  useEffect(() => {
+    if (currentAccount && whitelistService) {
+      loadOwnedCaps();
+    }
+  }, [currentAccount, whitelistService]);
+
+  /**
+   * Create a new whitelist
+   */
+  const handleCreateWhitelist = async () => {
+    if (!currentAccount) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (!whitelistService) {
+      setError("Whitelist service not available");
+      return;
+    }
+
+    setLoadingCreateWhitelist(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const tx = whitelistService.createWhitelistTransaction();
+
+      signAndExecute(
+        {
+          transaction: tx,
+        },
+        {
+          onSuccess: async (result) => {
+            const { capId, whitelistId } =
+              await whitelistService.waitForTransactionAndGetCreatedObjects(
+                result.digest,
+              );
+
+            if (capId && whitelistId) {
+              setSuccess(
+                `Whitelist created! Cap ID: ${capId.slice(0, 10)}..., Whitelist ID: ${whitelistId.slice(0, 10)}...`,
+              );
+              setWhitelistObjectId(whitelistId);
+              await loadOwnedCaps();
+            } else {
+              setError("Failed to get created object IDs");
+            }
+            setLoadingCreateWhitelist(false);
+          },
+          onError: (err) => {
+            setError(
+              `Failed to create whitelist: ${
+                err instanceof Error ? err.message : "Unknown error"
+              }`,
+            );
+            setLoadingCreateWhitelist(false);
+          },
+        },
+      );
+    } catch (err) {
+      setError(
+        `Failed to create whitelist: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+      );
+      setLoadingCreateWhitelist(false);
+    }
+  };
+
+  /**
+   * Add address to whitelist
+   */
+  const handleAddAddress = async () => {
+    if (!currentAccount) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (!selectedCap) {
+      setError("Please select a Cap");
+      return;
+    }
+
+    if (!addressToAdd.trim()) {
+      setError("Please enter an address to add");
+      return;
+    }
+
+    if (!whitelistService) {
+      setError("Whitelist service not available");
+      return;
+    }
+
+    setLoadingAddAddress(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const cap = await whitelistService.getCap(selectedCap);
+      if (!cap) {
+        setError("Failed to get Cap information");
+        setLoadingAddAddress(false);
+        return;
+      }
+
+      const tx = whitelistService.addAddressTransaction(
+        cap.whitelistId,
+        selectedCap,
+        addressToAdd.trim(),
+      );
+
+      signAndExecute(
+        {
+          transaction: tx,
+        },
+        {
+          onSuccess: async (result) => {
+            await whitelistService.waitForTransaction(result.digest);
+            setSuccess(
+              `Address ${addressToAdd.slice(0, 10)}... added to whitelist!`,
+            );
+            setAddressToAdd("");
+            setLoadingAddAddress(false);
+          },
+          onError: (err) => {
+            setError(
+              `Failed to add address: ${
+                err instanceof Error ? err.message : "Unknown error"
+              }`,
+            );
+            setLoadingAddAddress(false);
+          },
+        },
+      );
+    } catch (err) {
+      setError(
+        `Failed to add address: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+      );
+      setLoadingAddAddress(false);
+    }
+  };
+
+  /**
+   * Remove address from whitelist
+   */
+  const handleRemoveAddress = async () => {
+    if (!currentAccount) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (!selectedCap) {
+      setError("Please select a Cap");
+      return;
+    }
+
+    if (!addressToRemove.trim()) {
+      setError("Please enter an address to remove");
+      return;
+    }
+
+    if (!whitelistService) {
+      setError("Whitelist service not available");
+      return;
+    }
+
+    setLoadingRemoveAddress(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const cap = await whitelistService.getCap(selectedCap);
+      if (!cap) {
+        setError("Failed to get Cap information");
+        setLoadingRemoveAddress(false);
+        return;
+      }
+
+      const tx = whitelistService.removeAddressTransaction(
+        cap.whitelistId,
+        selectedCap,
+        addressToRemove.trim(),
+      );
+
+      signAndExecute(
+        {
+          transaction: tx,
+        },
+        {
+          onSuccess: async (result) => {
+            await whitelistService.waitForTransaction(result.digest);
+            setSuccess(
+              `Address ${addressToRemove.slice(0, 10)}... removed from whitelist!`,
+            );
+            setAddressToRemove("");
+            setLoadingRemoveAddress(false);
+          },
+          onError: (err) => {
+            setError(
+              `Failed to remove address: ${
+                err instanceof Error ? err.message : "Unknown error"
+              }`,
+            );
+            setLoadingRemoveAddress(false);
+          },
+        },
+      );
+    } catch (err) {
+      setError(
+        `Failed to remove address: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+      );
+      setLoadingRemoveAddress(false);
     }
   };
 
@@ -190,6 +481,13 @@ export function SealWhitelist() {
    * Decrypt data using Seal
    */
   const handleDecrypt = async (item: EncryptedItem) => {
+    if (isSessionKeyExpired()) {
+      setError("Session key has expired. Please create a new one.");
+      setSessionKey(null);
+      setSessionKeyCreatedAt(null);
+      return;
+    }
+
     if (!sessionKey) {
       setError("Please create a session key first");
       return;
@@ -200,7 +498,9 @@ export function SealWhitelist() {
       return;
     }
 
-    setLoading(true);
+    // Use item timestamp as unique identifier for loading state
+    const itemId = `${item.timestamp}-${item.nonce}`;
+    setLoadingDecrypt(itemId);
     setError(null);
     setSuccess(null);
 
@@ -225,7 +525,7 @@ export function SealWhitelist() {
       );
       console.error("Decryption error:", err);
     } finally {
-      setLoading(false);
+      setLoadingDecrypt(null);
     }
   };
 
@@ -262,6 +562,172 @@ export function SealWhitelist() {
           </Alert>
         )}
 
+        {/* Whitelist Management Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-black">Whitelist Management</CardTitle>
+            <CardDescription className="text-black">
+              Create and manage whitelists. Only addresses on the whitelist can
+              decrypt encrypted data.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Create Whitelist */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-black mb-2">
+                    Create New Whitelist
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Creates a new whitelist and returns a Cap object that you
+                    can use to manage addresses.
+                  </p>
+                  <Button
+                    onClick={handleCreateWhitelist}
+                    disabled={loadingCreateWhitelist || !currentAccount}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    {loadingCreateWhitelist ? (
+                      <>
+                        <ClipLoader size={20} color="white" className="mr-2" />
+                        Creating...
+                      </>
+                    ) : (
+                      "➕ Create Whitelist"
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Manage Whitelist Entries */}
+              {ownedCaps.length > 0 && (
+                <div className="space-y-4 border-t pt-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-black mb-2">
+                      Manage Whitelist Entries
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Select a Cap to manage addresses in its whitelist.
+                    </p>
+                  </div>
+
+                  {/* Select Cap */}
+                  <div>
+                    <label className="block text-sm font-medium text-black mb-2">
+                      Select Cap
+                    </label>
+                    <select
+                      value={selectedCap}
+                      onChange={(e) => {
+                        setSelectedCap(e.target.value);
+                        const cap = ownedCaps.find(
+                          (c) => c.objectId === e.target.value,
+                        );
+                        if (cap) {
+                          setWhitelistObjectId(cap.whitelistId);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black bg-white"
+                    >
+                      {ownedCaps.map((cap) => (
+                        <option key={cap.objectId} value={cap.objectId}>
+                          Cap: {cap.objectId.slice(0, 16)}... (Whitelist:{" "}
+                          {cap.whitelistId.slice(0, 16)}...)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Add Address */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-black">
+                      Add Address to Whitelist
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={addressToAdd}
+                        onChange={(e) => setAddressToAdd(e.target.value)}
+                        placeholder="0x... (Sui address)"
+                        disabled={loadingAddAddress}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      />
+                      <Button
+                        onClick={handleAddAddress}
+                        disabled={loadingAddAddress || !addressToAdd.trim()}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        {loadingAddAddress ? (
+                          <ClipLoader size={16} color="white" />
+                        ) : (
+                          "➕ Add"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Remove Address */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-black">
+                      Remove Address from Whitelist
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={addressToRemove}
+                        onChange={(e) => setAddressToRemove(e.target.value)}
+                        placeholder="0x... (Sui address)"
+                        disabled={loadingRemoveAddress}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      />
+                      <Button
+                        onClick={handleRemoveAddress}
+                        disabled={
+                          loadingRemoveAddress || !addressToRemove.trim()
+                        }
+                        variant="destructive"
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        {loadingRemoveAddress ? (
+                          <ClipLoader size={16} color="white" />
+                        ) : (
+                          "➖ Remove"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Display Whitelist ID */}
+                  {selectedCap && (
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-700">
+                        <span className="font-medium">Whitelist ID:</span>{" "}
+                        {ownedCaps.find((c) => c.objectId === selectedCap)
+                          ?.whitelistId || "N/A"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* No Caps Message */}
+              {ownedCaps.length === 0 && currentAccount && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No whitelists found. Create one to get started!</p>
+                </div>
+              )}
+
+              {/* Not Connected Message */}
+              {!currentAccount && (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Please connect your wallet to manage whitelists.</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Session Key Section */}
         <Card>
           <CardHeader>
@@ -275,9 +741,13 @@ export function SealWhitelist() {
             <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  {sessionKey ? (
+                  {sessionKey && !isSessionKeyExpired() ? (
                     <div className="text-sm text-green-600 font-medium">
                       ✓ Session key active (valid for 10 minutes)
+                    </div>
+                  ) : sessionKey && isSessionKeyExpired() ? (
+                    <div className="text-sm text-orange-600 font-medium">
+                      ⚠ Session key expired. Please renew.
                     </div>
                   ) : (
                     <div className="text-sm text-gray-600">
@@ -287,14 +757,19 @@ export function SealWhitelist() {
                 </div>
                 <Button
                   onClick={handleCreateSessionKey}
-                  disabled={loading || !!sessionKey}
+                  disabled={
+                    loadingSessionKey ||
+                    (!isSessionKeyExpired() && !!sessionKey)
+                  }
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  {loading ? (
+                  {loadingSessionKey ? (
                     <>
                       <ClipLoader size={20} color="white" className="mr-2" />
                       Creating...
                     </>
+                  ) : isSessionKeyExpired() && sessionKey ? (
+                    "Renew Session Key"
                   ) : (
                     "Create Session Key"
                   )}
@@ -355,11 +830,11 @@ export function SealWhitelist() {
               </div>
               <Button
                 onClick={handleEncrypt}
-                disabled={loading}
+                disabled={loadingEncrypt}
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
                 size="lg"
               >
-                {loading ? (
+                {loadingEncrypt ? (
                   <>
                     <ClipLoader size={20} color="white" className="mr-2" />
                     Encrypting...
@@ -413,10 +888,16 @@ export function SealWhitelist() {
                       <Button
                         size="sm"
                         onClick={() => handleDecrypt(item)}
-                        disabled={loading || !sessionKey}
+                        disabled={
+                          loadingDecrypt ===
+                            `${item.timestamp}-${item.nonce}` ||
+                          !sessionKey ||
+                          isSessionKeyExpired()
+                        }
                         className="bg-purple-600 hover:bg-purple-700 text-white"
                       >
-                        {loading ? (
+                        {loadingDecrypt ===
+                        `${item.timestamp}-${item.nonce}` ? (
                           <>
                             <ClipLoader
                               size={16}
@@ -467,6 +948,24 @@ export function SealWhitelist() {
             </ul>
             <p className="mt-4">
               <strong>Documentation:</strong>{" "}
+              <a
+                href="https://github.com/MystenLabs/seal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                ⭐ Awesome Seal GitHub
+              </a>{" "}
+              •{" "}
+              <a
+                href="https://sdk.mystenlabs.com/seal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Seal SDK Documentation
+              </a>{" "}
+              •{" "}
               <a
                 href="https://seal-docs.wal.app/Design/"
                 target="_blank"

@@ -15,3 +15,9 @@ export {
 export { getCounterFields } from "./types";
 export type { CounterData, CounterFields } from "./types";
 export { SealService, createSealService } from "./sealService";
+export {
+  WhitelistService,
+  createWhitelistService,
+  type WhitelistData,
+  type CapData,
+} from "./whitelistService";

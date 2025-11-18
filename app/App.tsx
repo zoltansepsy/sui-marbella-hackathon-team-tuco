@@ -7,13 +7,14 @@ import { CreateCounter } from "./CreateCounter";
 import { CounterList } from "./components/CounterList";
 import { WalrusUpload } from "./WalrusUpload";
 import { SealWhitelist } from "./SealWhitelist";
+import { Resources } from "./Resources";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 function App() {
   const currentAccount = useCurrentAccount();
   const [counterId, setCounter] = useState<string | null>(null);
-  const [view, setView] = useState<'create' | 'search' | 'counter' | 'walrus' | 'seal'>('create');
+  const [view, setView] = useState<'create' | 'search' | 'counter' | 'walrus' | 'seal' | 'resources'>('create');
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
@@ -70,6 +71,16 @@ function App() {
                 {/* Navigation with proper styling */}
                 <div className="flex justify-center space-x-4 flex-wrap gap-y-2">
                   <Button
+                    variant={view === 'resources' ? 'default' : 'outline'}
+                    onClick={() => setView('resources')}
+                    className={view === 'resources' 
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white' 
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }
+                  >
+                    📚 Resources
+                  </Button>
+                  <Button
                     variant={view === 'create' ? 'default' : 'outline'}
                     onClick={() => setView('create')}
                     className={view === 'create' 
@@ -112,6 +123,10 @@ function App() {
                 </div>
 
                 {/* Content based on view */}
+                {view === 'resources' && (
+                  <Resources />
+                )}
+
                 {view === 'create' && (
                   <CreateCounter onCreated={handleCounterCreated} />
                 )}
