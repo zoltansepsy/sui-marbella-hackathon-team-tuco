@@ -96,6 +96,25 @@ export function SealWhitelist() {
   const [manualNonce, setManualNonce] = useState("");
   const [loadingManualDecrypt, setLoadingManualDecrypt] = useState(false);
   const [decryptedResult, setDecryptedResult] = useState<string | null>(null);
+  const [decryptedBytesHex, setDecryptedBytesHex] = useState<string | null>(
+    null,
+  );
+  const [decryptedBytesArray, setDecryptedBytesArray] = useState<
+    number[] | null
+  >(null);
+
+  // Encryption result display state
+  const [lastEncryptedBytes, setLastEncryptedBytes] =
+    useState<Uint8Array | null>(null);
+  const [lastEncryptedBytesHex, setLastEncryptedBytesHex] = useState<
+    string | null
+  >(null);
+  const [lastEncryptedBytesArray, setLastEncryptedBytesArray] = useState<
+    number[] | null
+  >(null);
+  const [lastOriginalString, setLastOriginalString] = useState<string | null>(
+    null,
+  );
 
   /**
    * Sign personal message using wallet
@@ -230,6 +249,25 @@ export function SealWhitelist() {
         originalData: textToEncrypt,
         timestamp: Date.now(),
       };
+
+      // Store for display
+      setLastEncryptedBytes(encryptedBytes);
+      setLastEncryptedBytesHex(uint8ArrayToHex(encryptedBytes));
+      setLastEncryptedBytesArray(Array.from(encryptedBytes));
+      setLastOriginalString(textToEncrypt);
+
+      // Console logs for debugging
+      console.log("=== ENCRYPTION RESULTS ===");
+      console.log("Original String:", textToEncrypt);
+      console.log("Encrypted Bytes (Uint8Array):", Array.from(encryptedBytes));
+      console.log(
+        "Encrypted Bytes (Hex):",
+        `0x${uint8ArrayToHex(encryptedBytes)}`,
+      );
+      console.log("Encrypted Bytes Length:", encryptedBytes.length);
+      console.log("Whitelist ID:", whitelistObjectId);
+      console.log("Nonce:", encryptionNonce);
+      console.log("==========================");
 
       setEncryptedItems([encryptedItem, ...encryptedItems]);
       setSuccess("Data encrypted successfully!");
@@ -492,6 +530,147 @@ export function SealWhitelist() {
   };
 
   /**
+   * Convert hex string to Uint8Array
+   */
+  const hexToUint8Array = (hex: string): Uint8Array => {
+    // Remove 0x prefix if present
+    const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
+    // Remove spaces and newlines
+    const normalizedHex = cleanHex.replace(/\s+/g, "");
+
+    if (normalizedHex.length % 2 !== 0) {
+      throw new Error("Invalid hex string: length must be even");
+    }
+
+    const bytes = new Uint8Array(normalizedHex.length / 2);
+    for (let i = 0; i < normalizedHex.length; i += 2) {
+      bytes[i / 2] = parseInt(normalizedHex.substr(i, 2), 16);
+    }
+    return bytes;
+  };
+
+  /**
+   * Convert Uint8Array to hex string
+   */
+  const uint8ArrayToHex = (bytes: Uint8Array): string => {
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  };
+
+  /**
+   * Convert base64 string to Uint8Array
+   */
+  const base64ToUint8Array = (base64: string): Uint8Array => {
+    // Remove data URL prefix if present
+    const cleanBase64 = base64.includes(",") ? base64.split(",")[1] : base64;
+    const binaryString = atob(cleanBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  /**
+   * Handle manual decryption (for decrypting data from another wallet)
+   */
+  const handleManualDecrypt = async () => {
+    if (isSessionKeyExpired()) {
+      setError("Session key has expired. Please create a new one.");
+      setSessionKey(null);
+      setSessionKeyCreatedAt(null);
+      return;
+    }
+
+    if (!sessionKey) {
+      setError("Please create a session key first");
+      return;
+    }
+
+    if (!sealService) {
+      setError("Seal service not available. Please refresh the page.");
+      return;
+    }
+
+    if (!manualEncryptedBytes.trim()) {
+      setError("Please enter encrypted bytes");
+      return;
+    }
+
+    if (!manualWhitelistId.trim()) {
+      setError("Please enter whitelist object ID");
+      return;
+    }
+
+    if (!manualNonce.trim()) {
+      setError("Please enter nonce");
+      return;
+    }
+
+    setLoadingManualDecrypt(true);
+    setError(null);
+    setSuccess(null);
+    setDecryptedResult(null);
+
+    try {
+      // Try to parse as hex first, then base64
+      let encryptedBytes: Uint8Array;
+      try {
+        encryptedBytes = hexToUint8Array(manualEncryptedBytes.trim());
+      } catch (hexError) {
+        try {
+          encryptedBytes = base64ToUint8Array(manualEncryptedBytes.trim());
+        } catch (base64Error) {
+          throw new Error(
+            "Invalid encrypted bytes format. Please provide hex (with or without 0x prefix) or base64 string.",
+          );
+        }
+      }
+
+      // Decrypt using Seal
+      const decryptedBytes = await sealService.decrypt(
+        encryptedBytes,
+        sessionKey,
+        manualWhitelistId.trim(),
+        manualNonce.trim(),
+      );
+
+      // Convert bytes to text
+      const decryptedText = new TextDecoder().decode(decryptedBytes);
+
+      // Store for display
+      setDecryptedResult(decryptedText);
+      setDecryptedBytesHex(uint8ArrayToHex(decryptedBytes));
+      setDecryptedBytesArray(Array.from(decryptedBytes));
+
+      // Console logs for debugging
+      console.log("=== DECRYPTION RESULTS (Manual) ===");
+      console.log("Decrypted String:", decryptedText);
+      console.log("Decrypted Bytes (Uint8Array):", Array.from(decryptedBytes));
+      console.log(
+        "Decrypted Bytes (Hex):",
+        `0x${uint8ArrayToHex(decryptedBytes)}`,
+      );
+      console.log("Decrypted Bytes Length:", decryptedBytes.length);
+      console.log("Whitelist ID:", manualWhitelistId.trim());
+      console.log("Nonce:", manualNonce.trim());
+      console.log("===================================");
+
+      setSuccess("Data decrypted successfully!");
+    } catch (err) {
+      setError(
+        `Decryption failed: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }. Make sure you are on the whitelist and all inputs are correct.`,
+      );
+      console.error("Manual decryption error:", err);
+    } finally {
+      setLoadingManualDecrypt(false);
+    }
+  };
+
+  /**
    * Decrypt data using Seal
    */
   const handleDecrypt = async (item: EncryptedItem) => {
@@ -529,6 +708,24 @@ export function SealWhitelist() {
 
       // Convert bytes to text
       const decryptedText = new TextDecoder().decode(decryptedBytes);
+
+      // Store for display (for the item-based decrypt)
+      setDecryptedResult(decryptedText);
+      setDecryptedBytesHex(uint8ArrayToHex(decryptedBytes));
+      setDecryptedBytesArray(Array.from(decryptedBytes));
+
+      // Console logs for debugging
+      console.log("=== DECRYPTION RESULTS (Item) ===");
+      console.log("Decrypted String:", decryptedText);
+      console.log("Decrypted Bytes (Uint8Array):", Array.from(decryptedBytes));
+      console.log(
+        "Decrypted Bytes (Hex):",
+        `0x${uint8ArrayToHex(decryptedBytes)}`,
+      );
+      console.log("Decrypted Bytes Length:", decryptedBytes.length);
+      console.log("Whitelist ID:", item.whitelistObjectId);
+      console.log("Nonce:", item.nonce);
+      console.log("=================================");
 
       setSuccess(`Decrypted: ${decryptedText}`);
     } catch (err) {
@@ -898,6 +1095,212 @@ export function SealWhitelist() {
                   "🔒 Encrypt Data"
                 )}
               </Button>
+
+              {/* Encryption Results Display */}
+              {lastEncryptedBytes && (
+                <div className="mt-6 space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="text-lg font-semibold text-blue-900">
+                    Encryption Results:
+                  </h4>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-blue-900 mb-1">
+                        Original String:
+                      </label>
+                      <div className="p-2 bg-white border border-blue-300 rounded text-blue-900 font-mono text-sm break-words">
+                        {lastOriginalString}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-blue-900 mb-1">
+                        Encrypted Bytes (Hex):
+                      </label>
+                      <div className="p-2 bg-white border border-blue-300 rounded text-blue-900 font-mono text-xs break-all max-h-40 overflow-y-auto">
+                        0x{lastEncryptedBytesHex}
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `0x${lastEncryptedBytesHex}`,
+                          );
+                          setSuccess(
+                            "Encrypted bytes (hex) copied to clipboard!",
+                          );
+                        }}
+                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Copy Hex
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-blue-900 mb-1">
+                        Encrypted Bytes (Uint8Array):
+                      </label>
+                      <div className="p-2 bg-white border border-blue-300 rounded text-blue-900 font-mono text-xs break-all max-h-40 overflow-y-auto">
+                        [{lastEncryptedBytesArray?.slice(0, 100).join(", ")}
+                        {lastEncryptedBytesArray &&
+                        lastEncryptedBytesArray.length > 100
+                          ? ", ..."
+                          : ""}
+                        ]
+                      </div>
+                      <p className="text-xs text-blue-700 mt-1">
+                        Length: {lastEncryptedBytes.length} bytes
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Manual Decryption Section (for decrypting data from another wallet) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-black">
+              Decrypt Data (Manual Input)
+            </CardTitle>
+            <CardDescription className="text-black">
+              Decrypt data that was encrypted by another wallet. You need the
+              encrypted bytes, whitelist object ID, and nonce. Make sure you are
+              on the whitelist and have created a session key.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Encrypted Bytes (Hex or Base64)
+                </label>
+                <textarea
+                  value={manualEncryptedBytes}
+                  onChange={(e) => setManualEncryptedBytes(e.target.value)}
+                  placeholder="Enter encrypted bytes as hex (0x...) or base64 string..."
+                  className="w-full h-32 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-black placeholder:text-gray-500 font-mono text-sm"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  Accepts hex format (with or without 0x prefix) or base64
+                  encoded string
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Whitelist Object ID
+                </label>
+                <input
+                  type="text"
+                  value={manualWhitelistId}
+                  onChange={(e) => setManualWhitelistId(e.target.value)}
+                  placeholder="0x... (the whitelist shared object ID)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black font-mono text-sm"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  The whitelist object ID used during encryption
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Nonce
+                </label>
+                <input
+                  type="text"
+                  value={manualNonce}
+                  onChange={(e) => setManualNonce(e.target.value)}
+                  placeholder="Enter the nonce used during encryption"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  The nonce that was used when the data was encrypted
+                </p>
+              </div>
+              <Button
+                onClick={handleManualDecrypt}
+                disabled={
+                  loadingManualDecrypt || !sessionKey || isSessionKeyExpired()
+                }
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                size="lg"
+              >
+                {loadingManualDecrypt ? (
+                  <>
+                    <ClipLoader size={20} color="white" className="mr-2" />
+                    Decrypting...
+                  </>
+                ) : (
+                  "🔓 Decrypt Data"
+                )}
+              </Button>
+              {!sessionKey && (
+                <p className="text-sm text-orange-600">
+                  ⚠ Please create a session key first before decrypting
+                </p>
+              )}
+              {sessionKey && isSessionKeyExpired() && (
+                <p className="text-sm text-orange-600">
+                  ⚠ Session key expired. Please renew it before decrypting
+                </p>
+              )}
+              {decryptedResult && (
+                <div className="mt-4 space-y-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <h4 className="text-lg font-semibold text-green-900">
+                    Decryption Results:
+                  </h4>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-green-900 mb-1">
+                        Decrypted String:
+                      </label>
+                      <div className="p-3 bg-white border border-green-300 rounded text-green-900 font-mono text-sm break-words">
+                        {decryptedResult}
+                      </div>
+                    </div>
+
+                    {decryptedBytesHex && (
+                      <div>
+                        <label className="block text-sm font-medium text-green-900 mb-1">
+                          Decrypted Bytes (Hex):
+                        </label>
+                        <div className="p-2 bg-white border border-green-300 rounded text-green-900 font-mono text-xs break-all max-h-40 overflow-y-auto">
+                          0x{decryptedBytesHex}
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `0x${decryptedBytesHex}`,
+                            );
+                            setSuccess(
+                              "Decrypted bytes (hex) copied to clipboard!",
+                            );
+                          }}
+                          className="mt-1 text-xs text-green-600 hover:text-green-800 underline"
+                        >
+                          Copy Hex
+                        </button>
+                      </div>
+                    )}
+
+                    {decryptedBytesArray && (
+                      <div>
+                        <label className="block text-sm font-medium text-green-900 mb-1">
+                          Decrypted Bytes (Uint8Array):
+                        </label>
+                        <div className="p-2 bg-white border border-green-300 rounded text-green-900 font-mono text-xs break-all max-h-40 overflow-y-auto">
+                          [{decryptedBytesArray.slice(0, 100).join(", ")}
+                          {decryptedBytesArray.length > 100 ? ", ..." : ""}]
+                        </div>
+                        <p className="text-xs text-green-700 mt-1">
+                          Length: {decryptedBytesArray.length} bytes
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -938,8 +1341,35 @@ export function SealWhitelist() {
                         <span className="font-medium">Encrypted Size:</span>{" "}
                         {item.encryptedBytes.length} bytes
                       </div>
+                      <div className="text-xs text-gray-600">
+                        <span className="font-medium">Full Whitelist ID:</span>{" "}
+                        <span className="font-mono">
+                          {item.whitelistObjectId}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-600 break-all">
+                        <span className="font-medium">
+                          Encrypted Bytes (Hex):
+                        </span>{" "}
+                        <span className="font-mono">
+                          0x{uint8ArrayToHex(item.encryptedBytes).slice(0, 100)}
+                          {item.encryptedBytes.length > 50 ? "..." : ""}
+                        </span>
+                      </div>
                     </div>
-                    <div className="mt-3">
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const hex = uint8ArrayToHex(item.encryptedBytes);
+                          navigator.clipboard.writeText(hex);
+                          setSuccess("Encrypted bytes copied to clipboard!");
+                        }}
+                        variant="outline"
+                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                      >
+                        📋 Copy Encrypted Bytes
+                      </Button>
                       <Button
                         size="sm"
                         onClick={() => handleDecrypt(item)}
