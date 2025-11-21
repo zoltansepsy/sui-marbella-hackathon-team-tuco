@@ -4,7 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Next.js dApp built on the Sui blockchain that demonstrates integration with **Walrus** (decentralized storage) and **Seal** (Identity-Based Encryption with whitelist access control). The project showcases secure file storage with encrypted access control patterns.
+This is a Next.js dApp built on the Sui blockchain featuring a **Zero-Knowledge Freelance Platform** with **Walrus** (decentralized storage) and **Seal** (Identity-Based Encryption). The platform solves the atomic swap problem in freelance work through:
+
+- **Encrypted Deliverables**: Work is stored encrypted on Walrus, only accessible after payment
+- **Escrow Payments**: Smart contract holds funds until milestone approval
+- **Milestone System**: Break projects into verifiable stages with partial payments
+- **Dynamic NFT Profiles**: On-chain reputation with ratings and badges
+- **Access Control**: Seal encryption ensures only authorized parties can access work
+
+### Platform Concept
+
+**Problem**: Traditional freelance platforms suffer from trust issues - clients fear paying before seeing work, freelancers fear delivering before payment.
+
+**Solution**: Multi-layer verification with encrypted previews:
+1. Freelancer completes work, uploads encrypted full deliverables + watermarked previews to Walrus
+2. Client reviews preview to verify quality (cannot access full work)
+3. Client approves milestone, smart contract releases payment
+4. Freelancer shares decryption key, client gets full work
+5. Both parties rate each other, updating on-chain reputation
+
+## MVP Architecture
+
+### Phase 1 - Hackathon Core (3 Developers)
+
+**Dev 1 (Smart Contract Lead)**: Move contracts in [move/startHack/sources/](move/startHack/sources/)
+- [job_escrow.move](move/startHack/sources/job_escrow.move) - Job posting, escrow, state machine
+- [profile_nft.move](move/startHack/sources/profile_nft.move) - Dynamic NFT profiles
+- [milestone.move](move/startHack/sources/milestone.move) - Milestone management
+- [reputation.move](move/startHack/sources/reputation.move) - Rating system
+
+**Dev 2 (Integration Lead)**: Service layer in [app/services/](app/services/)
+- [jobService.ts](app/services/jobService.ts) - Job operations
+- [profileService.ts](app/services/profileService.ts) - Profile management
+- [reputationService.ts](app/services/reputationService.ts) - Ratings
+- Custom hooks in [app/hooks/](app/hooks/)
+
+**Dev 3 (Frontend Lead)**: UI components and views
+- Components in [app/components/](app/components/)
+- Views: Marketplace, My Jobs, Profile, Job Detail, Create Job
+- Integration with services via hooks
 
 ## Core Technologies
 
@@ -64,7 +102,275 @@ sui client publish --gas-budget 100000000 .
 ### Important: After Deployment
 Always update [app/constants.ts](app/constants.ts) with the new package ID:
 ```typescript
-export const TESTNET_WHITELIST_PACKAGE_ID = "0xYOUR_NEW_PACKAGE_ID";
+// All platform modules are in same package
+export const TESTNET_JOB_ESCROW_PACKAGE_ID = "0xYOUR_NEW_PACKAGE_ID";
+export const TESTNET_PROFILE_NFT_PACKAGE_ID = "0xYOUR_NEW_PACKAGE_ID";
+export const TESTNET_REPUTATION_PACKAGE_ID = "0xYOUR_NEW_PACKAGE_ID";
+```
+
+## Freelance Platform Architecture
+
+### Job Lifecycle & State Machine
+
+**Job States** ([job_escrow.move:17-24](move/startHack/sources/job_escrow.move#L17-L24)):
+1. **OPEN** (0) - Job posted, accepting applications
+2. **ASSIGNED** (1) - Freelancer selected, not yet started
+3. **IN_PROGRESS** (2) - Work actively being done
+4. **SUBMITTED** (3) - Milestone submitted for review
+5. **AWAITING_REVIEW** (4) - Client reviewing submission
+6. **COMPLETED** (5) - All milestones approved, payment released
+7. **CANCELLED** (6) - Job cancelled, funds refunded
+8. **DISPUTED** (7) - Dispute raised (future feature)
+
+**State Transitions**:
+```
+OPEN → ASSIGNED (client assigns freelancer)
+ASSIGNED → IN_PROGRESS (freelancer starts work)
+IN_PROGRESS → SUBMITTED (freelancer submits milestone)
+SUBMITTED → AWAITING_REVIEW (system state)
+AWAITING_REVIEW → IN_PROGRESS (client requests revision) OR COMPLETED (client approves)
+OPEN/ASSIGNED → CANCELLED (client cancels before work starts)
+```
+
+### Smart Contract Modules
+
+#### 1. Job Escrow Module ([job_escrow.move](move/startHack/sources/job_escrow.move))
+
+**Core Functionality**:
+- **Job Creation**: Client posts job with description (Walrus blob ID) and budget
+- **Escrow Management**: Holds SUI funds in `Balance<SUI>` until milestone approval
+- **Milestone System**: Track multiple milestones per job with individual amounts
+- **Access Control**: JobCap capability pattern for client operations
+- **Deadline Enforcement**: Uses `Clock` object for timestamp validation
+
+**Key Structs**:
+```move
+public struct Job has key {
+    id: UID,
+    client: address,
+    freelancer: Option<address>,
+    title: vector<u8>,
+    description_blob_id: vector<u8>,  // Walrus storage
+    budget: u64,
+    escrow: Balance<SUI>,
+    state: u8,
+    milestones: Table<u64, Milestone>,
+    applicants: vector<address>,
+    deadline: u64,
+    deliverable_blob_ids: vector<vector<u8>>,  // Encrypted with Seal
+}
+
+public struct JobCap has key, store {
+    id: UID,
+    job_id: ID,  // Links to specific job
+}
+```
+
+**Entry Functions** (DEV 1 to implement):
+- `create_job()` - Create job with escrow funding
+- `apply_for_job()` - Freelancer applies
+- `assign_freelancer()` - Client selects freelancer (requires JobCap)
+- `start_job()` - Freelancer begins work
+- `submit_milestone()` - Freelancer submits with proof blob ID
+- `approve_milestone()` - Client approves, releases funds (requires JobCap)
+- `add_milestone()` - Client adds milestone before assignment
+- `cancel_job()` - Client cancels, refunds escrow
+
+#### 2. Profile NFT Module ([profile_nft.move](move/startHack/sources/profile_nft.move))
+
+**Core Functionality**:
+- **Dynamic NFTs**: Profile data updates on-chain (not static metadata)
+- **Reputation Tracking**: Average rating, job counts, total earnings
+- **Profile Types**: Separate freelancer and client profiles (enum)
+- **Verification**: Admin-controlled verification badge
+- **Active Jobs**: VecSet tracks current job IDs
+
+**Key Structs**:
+```move
+public struct Profile has key, store {
+    id: UID,
+    owner: address,
+    profile_type: u8,  // FREELANCER (0) or CLIENT (1)
+    username: String,
+    bio: String,
+    tags: vector<String>,  // Skills or industries
+    avatar_url: String,  // Walrus blob ID
+    completed_jobs: u64,
+    rating: u64,  // Scaled by 100 (450 = 4.50 stars)
+    rating_count: u64,
+    total_amount: u64,  // Earnings (freelancer) or spent (client)
+    verified: bool,
+    active_jobs: VecSet<ID>,
+}
+
+public struct ProfileCap has key, store {
+    id: UID,
+    profile_id: ID,
+}
+```
+
+**Entry Functions** (DEV 1 to implement):
+- `create_profile()` - Mint profile NFT with type
+- `update_profile_info()` - Edit username, bio, tags, avatar (requires ProfileCap)
+- `add_rating()` - Called by job_escrow on completion
+- `record_job_completion()` - Update stats when job completes
+- `add_active_job()` / `remove_active_job()` - Manage active jobs
+
+#### 3. Reputation Module ([reputation.move](move/startHack/sources/reputation.move))
+
+**Core Functionality**:
+- **Rating Submission**: Post-job ratings with reviews
+- **Dispute Handling**: Flag unfair ratings for review
+- **Badge System**: Award achievement badges (Bronze/Silver/Gold/Platinum)
+- **Rating Validation**: Ensure rater was job participant
+
+**Badge Tiers**:
+- **Bronze**: 5+ jobs, 4.0+ rating, 3+ reviews
+- **Silver**: 20+ jobs, 4.5+ rating, 5+ reviews
+- **Gold**: 50+ jobs, 4.7+ rating, 10+ reviews
+- **Platinum**: 100+ jobs, 4.9+ rating, 10+ reviews
+
+**Entry Functions** (DEV 1 to implement):
+- `submit_rating()` - Submit rating for completed job (10-50 scale)
+- `dispute_rating()` - Challenge unfair rating
+- `award_badge()` - Award achievement badge (admin or automated)
+
+### Service Layer for Freelance Platform
+
+#### JobService ([jobService.ts](app/services/jobService.ts))
+
+**Transaction Builders** (DEV 2 to implement):
+```typescript
+createJobTransaction(title, descriptionBlobId, budgetAmount, deadline): Transaction
+applyForJobTransaction(jobId): Transaction
+assignFreelancerTransaction(jobId, jobCapId, freelancerAddress): Transaction
+submitMilestoneTransaction(jobId, milestoneId, proofBlobId): Transaction
+approveMilestoneTransaction(jobId, jobCapId, milestoneId): Transaction
+```
+
+**Query Methods**:
+```typescript
+async getJob(jobId): Promise<JobData | null>
+async getJobsByClient(clientAddress): Promise<JobData[]>
+async getJobsByFreelancer(freelancerAddress): Promise<JobData[]>
+async getOpenJobs(): Promise<JobData[]>
+```
+
+**Usage Pattern**:
+```typescript
+const jobService = useMemo(
+  () => createJobService(suiClient, jobEscrowPackageId),
+  [suiClient, jobEscrowPackageId]
+);
+
+const tx = jobService.createJobTransaction(title, blobId, budget, deadline);
+signAndExecute({ transaction: tx }, {
+  onSuccess: async ({ digest }) => {
+    const { jobId, jobCapId } = await jobService.waitForTransactionAndGetCreatedObjects(digest);
+  }
+});
+```
+
+#### ProfileService ([profileService.ts](app/services/profileService.ts))
+
+**Transaction Builders** (DEV 2 to implement):
+```typescript
+createProfileTransaction(profileType, username, realName, bio, tags, avatarUrl): Transaction
+updateProfileTransaction(profileId, profileCapId, updates): Transaction
+```
+
+**Query Methods**:
+```typescript
+async getProfile(profileId): Promise<ProfileData | null>
+async getProfileByOwner(ownerAddress): Promise<ProfileData | null>
+async getTopFreelancers(limit): Promise<ProfileData[]>
+```
+
+### Custom Hooks ([app/hooks/](app/hooks/))
+
+**Job Hooks** ([useJob.ts](app/hooks/useJob.ts)) - DEV 3 to implement:
+```typescript
+useJob(jobId) // Fetch single job with caching
+useJobsByClient(clientAddress) // Client's posted jobs
+useJobsByFreelancer(freelancerAddress) // Freelancer's assigned jobs
+useOpenJobs() // Marketplace listings
+```
+
+**Profile Hooks** ([useProfile.ts](app/hooks/useProfile.ts)):
+```typescript
+useProfile(profileId) // Fetch profile by ID
+useCurrentProfile() // Current user's profile
+useProfileByOwner(ownerAddress) // Profile by wallet address
+useTopFreelancers(limit) // Leaderboard
+```
+
+**Wallet Hooks** ([useWallet.ts](app/hooks/useWallet.ts)):
+```typescript
+useSuiBalance() // Get SUI balance and formatted display
+useHasSufficientBalance(requiredAmount) // Check if can afford operation
+useShortenAddress(address) // Format address for display
+useIsOwner(ownerAddress) // Check if current user owns resource
+```
+
+### Component Structure
+
+**Job Components** ([app/components/job/](app/components/job/)):
+- `JobCard.tsx` - Job summary for marketplace listings
+- `JobList.tsx` - Grid of job cards with filters
+- `JobDetail.tsx` - Full job details view
+- `JobCreateForm.tsx` - Job creation form
+- `MilestoneTracker.tsx` - Milestone progress display
+
+**Profile Components** ([app/components/profile/](app/components/profile/)):
+- `ProfileCard.tsx` - Profile display with rating/badges
+- `ProfileEditor.tsx` - Edit profile form
+- `ReputationBadge.tsx` - Badge tier display
+- `ProfileSetup.tsx` - Initial profile creation wizard
+
+**Escrow Components** ([app/components/escrow/](app/components/escrow/)):
+- `EscrowStatus.tsx` - Show escrow balance and locks
+- `FundReleaseButton.tsx` - Approve milestone payment
+
+### Integration with Walrus and Seal
+
+**Job Description Storage**:
+```typescript
+// 1. Upload job description to Walrus
+const { blobId } = await walrusService.upload(description, { epochs: 10 });
+
+// 2. Create job with blob ID
+const tx = jobService.createJobTransaction(title, blobId, budget, deadline);
+```
+
+**Encrypted Deliverables**:
+```typescript
+// 1. Create whitelist with client address
+const whitelistTx = whitelistService.createWhitelistTransaction();
+// Add client to whitelist
+
+// 2. Encrypt deliverable with Seal
+const encrypted = await sealService.encrypt(whitelistObjectId, nonce, fileData);
+
+// 3. Upload encrypted data to Walrus
+const { blobId } = await walrusService.upload(encrypted, { epochs: 10 });
+
+// 4. Submit milestone with blob ID
+const tx = jobService.submitMilestoneTransaction(jobId, milestoneId, blobId);
+```
+
+**Client Access Flow**:
+```typescript
+// 1. Client approves milestone (payment released)
+const approveTx = jobService.approveMilestoneTransaction(jobId, jobCapId, milestoneId);
+
+// 2. Create session key for decryption
+const sessionKey = await sealService.createSessionKey(address, signPersonalMessage);
+
+// 3. Download encrypted deliverable
+const encryptedData = await walrusService.downloadAsBytes(blobId);
+
+// 4. Decrypt with whitelist access
+const decrypted = await sealService.decrypt(encryptedData, sessionKey, whitelistObjectId, nonce);
 ```
 
 ## Architecture Overview

@@ -74,60 +74,142 @@ function App() {
 
                 {view === "home" && (
                   <div className="space-y-6">
-                    {/* Feature Navigation Buttons */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Counter Section */}
-                      <Card className="p-4">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Counter
-                        </h3>
-                        <div className="flex flex-col gap-2">
-                          <Button
-                            onClick={() => setView("createCounter")}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                            size="sm"
-                          >
-                            Create Counter
-                          </Button>
-                          <Button
-                            onClick={() => setView("search")}
-                            variant="outline"
-                            className="w-full border-gray-300 text-gray-700 hover:bg-gray-50"
-                            size="sm"
-                          >
-                            Find Counter
-                          </Button>
-                        </div>
-                      </Card>
+                    {/* Welcome Section */}
+                    <div className="text-center py-8">
+                      <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                        Zero-Knowledge Freelance Platform
+                      </h1>
+                      <p className="text-lg text-gray-600 mb-8">
+                        Secure freelance work with encrypted deliverables and escrow payments
+                      </p>
+                    </div>
 
-                      {/* Walrus Section */}
-                      <Card className="p-4">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Walrus Storage
+                    {/* Main Feature Navigation */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setView("marketplace")}>
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-3">
+                          Job Marketplace
                         </h3>
-                        <Button
-                          onClick={() => setView("walrus")}
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-                          size="sm"
-                        >
-                          Upload Files
+                        <p className="text-gray-600 mb-4">
+                          Browse and apply for open freelance jobs
+                        </p>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                          Browse Jobs
                         </Button>
                       </Card>
 
-                      {/* Seal Section */}
-                      <Card className="p-4">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                          Seal Encryption
+                      <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setView("createJob")}>
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-3">
+                          Post a Job
                         </h3>
-                        <Button
-                          onClick={() => setView("seal")}
-                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-                          size="sm"
-                        >
-                          Seal Whitelist
+                        <p className="text-gray-600 mb-4">
+                          Hire talented freelancers for your project
+                        </p>
+                        <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                          Create Job
+                        </Button>
+                      </Card>
+
+                      <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setView("myJobs")}>
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-3">
+                          My Jobs
+                        </h3>
+                        <p className="text-gray-600 mb-4">
+                          Manage your active and completed jobs
+                        </p>
+                        <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+                          View My Jobs
+                        </Button>
+                      </Card>
+
+                      <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setView("profile")}>
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-3">
+                          Profile
+                        </h3>
+                        <p className="text-gray-600 mb-4">
+                          View and edit your profile, reputation, and badges
+                        </p>
+                        <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                          View Profile
                         </Button>
                       </Card>
                     </div>
+
+                    {/* Demo Features Section */}
+                    <div className="mt-12 pt-8 border-t border-gray-200">
+                      <h3 className="text-lg font-semibold text-gray-700 mb-4">Demo Features</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card className="p-4">
+                          <h4 className="text-md font-semibold text-gray-900 mb-2">Counter</h4>
+                          <div className="flex flex-col gap-2">
+                            <Button onClick={() => setView("createCounter")} variant="outline" size="sm">
+                              Create Counter
+                            </Button>
+                            <Button onClick={() => setView("search")} variant="outline" size="sm">
+                              Find Counter
+                            </Button>
+                          </div>
+                        </Card>
+                        <Card className="p-4">
+                          <h4 className="text-md font-semibold text-gray-900 mb-2">Walrus Storage</h4>
+                          <Button onClick={() => setView("walrus")} variant="outline" size="sm" className="w-full">
+                            Upload Files
+                          </Button>
+                        </Card>
+                        <Card className="p-4">
+                          <h4 className="text-md font-semibold text-gray-900 mb-2">Seal Encryption</h4>
+                          <Button onClick={() => setView("seal")} variant="outline" size="sm" className="w-full">
+                            Seal Whitelist
+                          </Button>
+                        </Card>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Freelance Platform Views - TODO: Replace with actual view components */}
+                {view === "marketplace" && (
+                  <div className="text-center py-12">
+                    <h2 className="text-2xl font-bold mb-4">Job Marketplace</h2>
+                    <p className="text-gray-600 mb-4">Browse open freelance jobs (Coming Soon)</p>
+                    <p className="text-sm text-gray-500">DEV 3: Implement JobMarketplaceView component</p>
+                    <Button onClick={() => setView("home")} className="mt-4">Back to Home</Button>
+                  </div>
+                )}
+
+                {view === "myJobs" && (
+                  <div className="text-center py-12">
+                    <h2 className="text-2xl font-bold mb-4">My Jobs</h2>
+                    <p className="text-gray-600 mb-4">Manage your jobs (Coming Soon)</p>
+                    <p className="text-sm text-gray-500">DEV 3: Implement MyJobsView component</p>
+                    <Button onClick={() => setView("home")} className="mt-4">Back to Home</Button>
+                  </div>
+                )}
+
+                {view === "createJob" && (
+                  <div className="text-center py-12">
+                    <h2 className="text-2xl font-bold mb-4">Create Job</h2>
+                    <p className="text-gray-600 mb-4">Post a new job (Coming Soon)</p>
+                    <p className="text-sm text-gray-500">DEV 3: Implement CreateJobView component</p>
+                    <Button onClick={() => setView("home")} className="mt-4">Back to Home</Button>
+                  </div>
+                )}
+
+                {view === "profile" && (
+                  <div className="text-center py-12">
+                    <h2 className="text-2xl font-bold mb-4">Profile</h2>
+                    <p className="text-gray-600 mb-4">View and edit your profile (Coming Soon)</p>
+                    <p className="text-sm text-gray-500">DEV 3: Implement ProfileView component</p>
+                    <Button onClick={() => setView("home")} className="mt-4">Back to Home</Button>
+                  </div>
+                )}
+
+                {view === "jobDetail" && (
+                  <div className="text-center py-12">
+                    <h2 className="text-2xl font-bold mb-4">Job Details</h2>
+                    <p className="text-gray-600 mb-4">View job details (Coming Soon)</p>
+                    <p className="text-sm text-gray-500">DEV 3: Implement JobDetailView component</p>
+                    <Button onClick={() => setView("marketplace")} className="mt-4">Back to Marketplace</Button>
                   </div>
                 )}
 

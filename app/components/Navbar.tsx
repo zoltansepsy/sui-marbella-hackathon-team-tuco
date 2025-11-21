@@ -14,7 +14,30 @@ import {
 } from "./ui/navigation-menu";
 import { useView } from "../contexts/ViewContext";
 
-const components: { title: string; view: string; description: string }[] = [
+const platformFeatures: { title: string; view: string; description: string }[] = [
+  {
+    title: "Job Marketplace",
+    view: "marketplace",
+    description: "Browse and apply for open freelance jobs.",
+  },
+  {
+    title: "Post a Job",
+    view: "createJob",
+    description: "Hire talented freelancers for your project.",
+  },
+  {
+    title: "My Jobs",
+    view: "myJobs",
+    description: "Manage your active and completed jobs.",
+  },
+  {
+    title: "Profile",
+    view: "profile",
+    description: "View and edit your profile and reputation.",
+  },
+];
+
+const demoFeatures: { title: string; view: string; description: string }[] = [
   {
     title: "Create Counter",
     view: "createCounter",
@@ -46,12 +69,12 @@ export default function Navbar() {
         <div className="flex items-center space-x-6">
           <NavigationMenuItem>
             <NavigationMenuLink asChild>
-              <Link 
-                href="/" 
+              <Link
+                href="/"
                 className="flex items-center space-x-2 font-semibold text-lg text-gray-900"
                 onClick={() => setView('home')}
               >
-                Hackathon Starter
+                ZK Freelance
               </Link>
             </NavigationMenuLink>
           </NavigationMenuItem>
@@ -68,21 +91,21 @@ export default function Navbar() {
                       onClick={() => setView('home')}
                     >
                       <div className="mb-2 mt-4 text-lg font-medium text-gray-900">
-                        Hackathon Starter
+                        ZK Freelance Platform
                       </div>
                       <p className="text-sm leading-tight text-slate-600">
-                        A stable base template for Sui hackathons with essential components and integrations.
+                        Secure freelance work with encrypted deliverables and escrow payments.
                       </p>
                     </Link>
                   </NavigationMenuLink>
                 </li>
-                {components.map((component) => (
+                {platformFeatures.map((feature) => (
                   <ListItem
-                    key={component.title}
-                    title={component.title}
-                    onClick={() => setView(component.view as any)}
+                    key={feature.title}
+                    title={feature.title}
+                    onClick={() => setView(feature.view as any)}
                   >
-                    {component.description}
+                    {feature.description}
                   </ListItem>
                 ))}
               </ul>
